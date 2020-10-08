@@ -12,7 +12,7 @@ output:
 
 
 ```{r setup, include=FALSE}
-#knitr::opts_chunk$set(echo = TRUE, error=TRUE, message=FALSE, warning=FALSE)
+knitr::opts_chunk$set(echo = TRUE, error=TRUE, message=FALSE, warning=FALSE)
 ```
 
 ```{r libraries}
@@ -32,6 +32,7 @@ library(plotly)        # for the ggplotly() - basic interactivity
 library(gganimate)     # for adding animation layers to ggplots
 library(transformr)    # for "tweening" (gganimate)
 library(shiny)         # for creating interactive apps
+library(ggimage)
 gs4_deauth()           # To not have to authorize each time you knit.
 theme_set(theme_minimal())
 ```
@@ -84,19 +85,116 @@ Once your repository is created, you should always open your **project** rather 
 
   1. Choose 2 graphs you have created for ANY assignment in this class and add interactivity using the `ggplotly()` function.
   
-  2. Use animation to tell an interesting story with the `small_trains` dataset that contains data from the SNCF (National Society of French Railways). These are Tidy Tuesday data! Read more about it [here](https://github.com/rfordatascience/tidytuesday/tree/master/data/2019/2019-02-26).
+```{r, fig.width = 10}
+perfect_garden_graph_v3 <- garden_harvest %>%
+  #Filter dataset to only include tomatoes
+  filter(vegetable == "tomatoes") %>% 
+  #Create a new variable that gives weight in pounds
+  mutate(weight_in_lbs = weight/453.592) %>%
+  #Calculate the total weight harvested for each date in pounds (in case a variety was harvested multiple times on the same day) 
+  group_by(variety, date) %>% 
+  summarize(total_days_weight_lbs = sum(weight_in_lbs)) %>% 
+  #Pipe into ggplot and create a point graph. Facet by variety of tomato. Reorder the varieties so that varieties are graphed in order of mean(total_days_weight_lbs). Add color, labels, and a theme. This week, I changed the theme to "linedraw", which makes the data points easier to measure visually. Add in connecting lines to more clearly show the variations in weight over time.
+  ggplot(aes(x = date, y = total_days_weight_lbs)) +
+  geom_point(color = "red") + 
+  geom_line() +
+  facet_wrap(~fct_reorder(variety, total_days_weight_lbs, mean)) + 
+  labs(title = "The Weight of Tomato Varieties Harvested Over Time", x = "Date", y = "Weight (lbs)") +
+  theme_linedraw()
+
+ggplotly(perfect_garden_graph_v3)
+```
+
 
 ```{r}
+science <- read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-06-09/science.csv')
 
+#Look at only the first listed occupation for each scientist in the dataset; create a new dataset called new_occupation
+science %>% 
+  separate(occupation_s, sep = ";", into = "first_occupation", extra = "drop") -> new_occupation
+
+
+#Count the number of scientists in each occupation to help identify the top five most common occupations
+new_occupation %>% 
+  count(first_occupation) 
+
+#Filter out only the Top Five Most Common Occupations; create a new dataset called topfive_first_occupations
+topfive_first_occupations <- filter(new_occupation, first_occupation %in% c("Inventor", "Chemist", "Mathematician", "Computer scientist", "Physicist"))
+
+#Create a new variable from birth called birth_decade
+floor_decade = function(value){ return(value - value %% 10) }
+topfive_first_occupations$birth_decade <- floor_decade(topfive_first_occupations$birth)
+
+#Plot birth decade vs. occupation in a bar graph; facet so rows show occupation
+african_american_scientist_occupations <- topfive_first_occupations %>% 
+  ggplot(aes(x = birth_decade)) +
+  geom_bar(fill = "blue") +
+  facet_grid(rows = vars(first_occupation), space = "free") +
+  labs(title = "Birth Decade vs. Occupation Frequency for African American Scientists", x = "Birth Decade", y = "Count") +
+  theme_dark()
+
+ggplotly(african_american_scientist_occupations)
 ```
+
+
+  2. Use animation to tell an interesting story with the `small_trains` dataset that contains data from the SNCF (National Society of French Railways). These are Tidy Tuesday data! Read more about it [here](https://github.com/rfordatascience/tidytuesday/tree/master/data/2019/2019-02-26).
+
+```{r, eval = FALSE}
+small_trains %>% 
+  filter(departure_station == "PARIS EST", arrival_station == "NANCY", year == 2018) %>% 
+  #arrange(year, month)
+  ggplot(aes(x = month, y = total_num_trips)) +
+  geom_line(color = "darkred") +
+  labs(title = "Total Number of Trips per Month from PARIS EST to NANCY in 2018", x = "Month", y = "Trips", subtitle = "Month: {frame_along}") +
+  transition_reveal(month)
+```
+
+
+```{r, eval = FALSE}
+anim_save("Trains.gif")
+```
+
+
+```{r}
+knitr::include_graphics("Trains.gif")
+```
+
+
 
 ## Garden data
 
   3. In this exercise, you will create a stacked area plot that reveals itself over time (see the `geom_area()` examples [here](https://ggplot2.tidyverse.org/reference/position_stack.html)). You will look at cumulative harvest of tomato varieties over time. You should do the following:
-  * From the `garden_harvest` data, filter the data to the tomatoes and find the *daily* harvest in pounds for each variety.  
-  * Then, for each variety, find the cumulative harvest in pounds.  
+  * From the `garden_harvest` data, filter the data to the tomatoes and find the *daily* harvest in pounds for each variety.
+  * Then, for each variety, find the cumulative harvest in pounds.
   * Use the data you just made to create a static cumulative harvest area plot, with the areas filled with different colors for each vegetable and arranged (HINT: `fct_reorder()`) from most to least harvested (most on the bottom).  
-  * Add animation to reveal the plot over date. 
+  * Add animation to reveal the plot over date.
+  
+```{r, eval = FALSE}
+garden_harvest %>% 
+  filter(vegetable == "tomatoes") %>% 
+  complete(variety, date = seq.Date(min(date), max(date), by="day")) %>% 
+  select(-c(vegetable, units)) %>% 
+  mutate(weight = replace_na(weight, 0)) %>% 
+  group_by(variety, date) %>% 
+  summarize(daily_harvest_lb = sum(weight) * 0.00220462) %>% 
+  mutate(cumsum_daily_harvest_lb = cumsum(daily_harvest_lb)) %>%   
+  select(-daily_harvest_lb) %>% 
+  ggplot(aes(x = date, y = cumsum_daily_harvest_lb, fill = variety)) +
+  geom_area(position = position_stack()) +
+  labs(title = "Cumulative Harvest of Tomato Varieties Over Time", x = "Date", y = "Pounds", fill = "Variety", subtitle = "Date: {frame_along}") +
+  transition_reveal(date) 
+```
+
+
+```{r, eval = FALSE}
+anim_save("CumulativeHarvest.gif")
+```
+
+
+```{r}
+knitr::include_graphics("CumulativeHarvest.gif")
+```
+
 
 ## Maps, animation, and movement!
 
@@ -105,36 +203,189 @@ Once your repository is created, you should always open your **project** rather 
   * Plot on a map using `ggmap`.  
   * Show "current" location with a red point. 
   * Show path up until the current point.  
-  * Color the path according to elevation.  
+  * Color the path according to elevation.
   * Show the time in the subtitle.  
   * CHALLENGE: use the `ggimage` package and `geom_image` to add a bike image instead of a red point. You can use [this](https://raw.githubusercontent.com/llendway/animation_and_interactivity/master/bike.png) image. See [here](https://goodekat.github.io/presentations/2019-isugg-gganimate-spooky/slides.html#35) for an example. 
   * Add something of your own! And comment on if you prefer this to the static map and why or why not.
+
+```{r, eval = FALSE}
+bike_image_link <- "https://raw.githubusercontent.com/llendway/animation_and_interactivity/master/bike.png"
+
+mallorca_bike_day7 <- mallorca_bike_day7 %>%
+  mutate(image = bike_image_link)
+
+mallorca_map <- get_stamenmap(
+    bbox = c(left = 2.28, bottom = 39.41, right = 3.03, top = 39.8), 
+    maptype = "terrain",
+    zoom = 11)
+
+ggmap(mallorca_map) +
+  geom_path(data = mallorca_bike_day7, 
+            aes(x = lon, y = lat, color = ele),
+            size = .5) +
+  labs(title = "Mallorca Bike Ride",
+      subtitle = "Time: {frame_along}") +
+  geom_image(data = mallorca_bike_day7,
+            aes(x = lon, y = lat, image = bike_image_link), 
+            size = 0.075) +
+  transition_reveal(time) +
+  scale_color_viridis_c(option = "magma") +
+  theme_map() +
+  theme(legend.background = element_blank())
+```
+
+
+```{r, eval = FALSE}
+anim_save("MallorcaBikeRide.gif")
+```
+
+
+```{r}
+knitr::include_graphics("MallorcaBikeRide.gif")
+```
+
+
+I prefer the animated map to the static map because it allows you to see the direction Lisa takes on her ride. The static map only shows the path, but not the direction it was traveled. 
+
   
   5. In this exercise, you get to meet my sister, Heather! She is a proud Mac grad, currently works as a Data Scientist at 3M where she uses R everyday, and for a few years (while still holding a full-time job) she was a pro triathlete. You are going to map one of her races. The data from each discipline of the Ironman 70.3 Pan Am championships, Panama is in a separate file - `panama_swim`, `panama_bike`, and `panama_run`. Create a similar map to the one you created with my cycling data. You will need to make some small changes: 1. combine the files (HINT: `bind_rows()`, 2. make the leading dot a different color depending on the event (for an extra challenge, make it a different image using `geom_image()!), 3. CHALLENGE (optional): color by speed, which you will need to compute on your own from the data. You can read Heather's race report [here](https://heatherlendway.com/2016/02/10/ironman-70-3-pan-american-championships-panama-race-report/). She is also in the Macalester Athletics [Hall of Fame](https://athletics.macalester.edu/honors/hall-of-fame/heather-lendway/184) and still has records at the pool. 
   
-```{r}
 
+```{r, eval = FALSE}
+total_trail <- panama_swim %>%
+  bind_rows(list(panama_run, panama_bike)) 
+
+panama_map <- get_stamenmap(
+  bbox = c(left = -79.56, bottom = 8.88, right = -79.41, top = 9.001),
+  maptype = "terrain",
+  zoom = 13)
+
+ggmap(panama_map) +
+  geom_point(data = total_trail, 
+             aes(x = lon, y = lat, color = event, shape = event),
+             size = 2) +
+  geom_path(data = total_trail,
+            aes(x = lon, y = lat, color = event),
+            alpha = 0.8, size = 0.5) +
+  labs(title = "Ironman 70.3 Pan Am Championship",
+       subtitle = "Time: {frame_along}") +
+  scale_color_viridis_d(option = "magma") +
+  theme_map() +
+  theme(legend.background = element_blank()) +
+  transition_reveal(time)
 ```
+
+
+```{r, eval = FALSE}
+anim_save("ironmanpanam.gif")
+```
+  
+
+```{r}
+knitr::include_graphics("ironmanpanam.gif")
+```
+
   
 ## COVID-19 data
 
   6. In this exercise, you are going to replicate many of the features in [this](https://aatishb.com/covidtrends/?region=US) visualization by Aitish Bhatia but include all US states. Requirements:
- * Create a new variable that computes the number of new cases in the past week (HINT: use the `lag()` function you've used in a previous set of exercises). Replace missing values with 0's using `replace_na()`.  
-  * Filter the data to omit rows where the cumulative case counts are less than 20.  
-  * Create a static plot with cumulative cases on the x-axis and new cases in the past 7 days on the x-axis. Connect the points for each state over time. HINTS: use `geom_path()` and add a `group` aesthetic.  Put the x and y axis on the log scale and make the tick labels look nice - `scales::comma` is one option. This plot will look pretty ugly as is.
-  * Animate the plot to reveal the pattern by date. Display the date as the subtitle. Add a leading point to each state's line (`geom_point()`) and add the state name as a label (`geom_text()` - you should look at the `check_overlap` argument).  
+ * Create a new variable that computes the number of new cases in the past week (HINT: use the `lag()` function you've used in a previous set of exercises). Replace missing values with 0's using `replace_na()`. 
+  * Filter the data to omit rows where the cumulative case counts are less than 20. 
+  * Create a static plot with cumulative cases on the x-axis and new cases in the past 7 days on the y-axis. Connect the points for each state over time. HINTS: use `geom_path()` and add a `group` aesthetic.  Put the x and y axis on the log scale and make the tick labels look nice - `scales::comma` is one option. This plot will look pretty ugly as is. 
+  * Animate the plot to reveal the pattern by date. Display the date as the subtitle. Add a leading point to each state's line (`geom_point()`) and add the state name as a label (`geom_text()` - you should look at the `check_overlap` argument). 
   * Use the `animate()` function to have 200 frames in your animation and make it 30 seconds long. 
   * Comment on what you observe.
   
+```{r, eval=FALSE}
+covid19 %>% 
+  group_by(state) %>% 
+  mutate(lag7 = lag(cases, 7, order_by = date)) %>%
+  replace_na(list(lag7 = 0)) %>%
+  mutate(new_cases_past_week = cases - lag7) %>% 
+  filter(cases >= 20) %>% 
+  
+  ggplot(aes(x = cases, y = new_cases_past_week, group = state)) +
+  geom_point() +
+  geom_path(color = "lightgray") +
+  geom_text(aes(label = state), check_overlap = TRUE) +
+  scale_x_log10(labels = scales::comma) +
+  scale_y_log10(labels = scales::comma) +
+  labs(title = "Trajectory of US COVID-19 Confirmed Cases", x = "Total Confirmed Cases", y = "New Confirmed Cases (in the Past Week)", subtitle = "Date: {frame_along}") +
+  theme(legend.position = "none") +
+  transition_reveal(date) -> covid19trajectory_gganim
+
+  animate(covid19trajectory_gganim, nframes = 200, duration = 30)
+```
+
+```{r, eval=FALSE}
+anim_save("COVID19Trajectory.gif")
+```
+
+
+```{r}
+knitr::include_graphics("COVID19Trajectory.gif")
+```
+
+
+The trajectory of confirmed COVID-19 cases increases sharply for nearly all states initially (especially for some states, such as New York, California, and Florida). Then, the number of new confirmed cases in the past week drops off for most states once they reach about 10,000 total confirmed cases(although the point of drop off varies for each state).
+  
+  
   7. In this exercise you will animate a map of the US, showing how cumulative COVID-19 cases per 10,000 residents has changed over time. This is similar to exercises 11 & 12 from the previous exercises, with the added animation! So, in the end, you should have something like the static map you made there, but animated over all the days. Put date in the subtitle. Comment on what you see.
+  
 
-## Your first `shiny` app
+```{r, eval = FALSE}
+census_pop_est_2018 <- read_csv("https://www.dropbox.com/s/6txwv3b4ng7pepe/us_census_2018_state_pop_est.csv?dl=1") %>% 
+  separate(state, into = c("dot","state"), extra = "merge") %>% 
+  select(-dot) %>% 
+  mutate(state = str_to_lower(state))
+```
+  
+```{r, eval=FALSE}
+covid19_population <-
+  covid19 %>% 
+  mutate(state = str_to_lower(state)) %>%
+  left_join(census_pop_est_2018,
+            by = "state") %>% 
+  group_by(state, est_pop_2018, date) %>%
+  summarize(cumulative_cases = max(cases)) %>%
+  mutate(cases_per_10000 = (cumulative_cases/est_pop_2018)*10000)
 
-  8. This app will also use the COVID data. Make sure you load that data and all the libraries you need in the `app.R` file you create. Below, you will post a link to the app that you publish on shinyapps.io. You will create an app to compare states' cumulative number of COVID cases over time. The x-axis will be number of days since 20+ cases and the y-axis will be cumulative cases on the log scale (`scale_y_log10()`). We use number of days since 20+ cases on the x-axis so we can make better comparisons of the curve trajectories. You will have an input box where the user can choose which states to compare (`selectInput()`) and have a submit button to click once the user has chosen all states they're interested in comparing. The graph should display a different line for each state, with labels either on the graph or in a legend. Color can be used if needed. 
+states_map <- map_data("state")
+
+covid_map <- covid19_population %>% 
+  mutate(state = str_to_lower(state), weekday = wday(date, label=TRUE)) %>%
+  filter(weekday == "Fri") %>%
+  ggplot() +
+  geom_map(map = states_map,
+           aes(map_id = state, fill = cases_per_10000, group = date)) +
+  expand_limits(x = states_map$long, y = states_map$lat) + 
+  labs(title = "Cumulative COVID-19 cases per 10,000 people in the United States", fill = "Cases/10,000") +
+  theme(legend.background = element_blank()) + 
+  theme_map() +
+  scale_fill_viridis_c() +
+  transition_states(date, transition_length = 0) +
+  labs(subtitle = "Date: {next_state}")
+
+animate(covid_map, duration = 30)
+```
+
+```{r, eval=FALSE}
+anim_save("COVID19Map.gif")
+```
+
+```{r}
+knitr::include_graphics("COVID19Map.gif")
+```
+
+From this graphic, I can see that states in the same geographic region of the country tend to show similar increases in the number of confirmed cases per 10,000. For instance, the southeastern states all seem to shift from blue to green to yellow together, indicating an increase in the number of cases per 10,000 in each of these states. 
+  
   
 ## GitHub link
 
   9. Below, provide a link to your GitHub page with this set of Weekly Exercises. Specifically, if the name of the file is 05_exercises.Rmd, provide a link to the 05_exercises.md file, which is the one that will be most readable on GitHub. If that file isn't very readable, then provide a link to your main GitHub page.
+  
+
+  
 
 
 **DID YOU REMEMBER TO UNCOMMENT THE OPTIONS AT THE TOP?**
